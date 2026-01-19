@@ -304,51 +304,247 @@ if 'selected_city' not in st.session_state:
 if 'translations_cache' not in st.session_state:
     st.session_state.translations_cache = {}
 
-# Translation function using GPT-4o mini
-def translate_text(text, target_language="zh"):
-    """Translate text using GPT-4o mini with caching"""
-    if not text or not text.strip():
-        return text
+# Fixed English texts for PDF (no translation needed)
+ENGLISH_TEXTS = {
+    "company": "GRAND STEP (H.K.) LTD",
+    "title": "PHYSICAL TEST REPORT",
+    "test_location": "Test Location:",
+    "report_date": "Report Date:",
     
-    # Check cache first
-    cache_key = f"{text}_{target_language}"
-    if cache_key in st.session_state.translations_cache:
-        return st.session_state.translations_cache[cache_key]
+    # Section headers
+    "basic_info": "1. BASIC INFORMATION",
+    "adhesive_test": "2. ADHESIVE/PULL TEST",
+    "components_test": "3. COMPONENTS PHYSICAL TEST",
+    "flexing_test": "4. FLEXING TEST",
+    "abrasion_test": "5. ABRASION TEST",
+    "resistance_test": "6. RESISTANCE TEST",
+    "hardness_test": "7. HARDNESS TEST",
+    "conclusion": "8. CONCLUSION",
+    "rust_test": "RUST TEST",
     
-    # Don't translate numbers or alphanumeric codes
-    if text.strip().replace('.', '').replace(',', '').replace('-', '').isdigit():
-        st.session_state.translations_cache[cache_key] = text
-        return text
+    # Labels
+    "report_no": "Report No.:",
+    "date_no": "Date/No.:",
+    "ci_no": "CI / Order No.:",
+    "order_qty": "Order QTY:",
+    "brand": "Brand:",
+    "produced_qty": "Produced QTY:",
+    "style_no": "Style No.:",
+    "factory_trader": "Factory/Trader:",
+    "sales": "Sales:",
     
-    if not openai_client:
-        st.session_state.translations_cache[cache_key] = text
-        return text
+    # Standard note
+    "standard_note": "Note: This is Grand Step Company Standard only. Any priority should follow Customer or 3rd Lab Standard",
     
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": f"You are a professional translator. Translate the following text to {target_language}. Only return the translation, no explanations. Preserve any numbers, dates, and special formatting."},
-                {"role": "user", "content": text}
-            ],
-            temperature=0.1,
-            max_tokens=500
-        )
-        
-        translated_text = response.choices[0].message.content.strip()
-        st.session_state.translations_cache[cache_key] = translated_text
-        return translated_text
-    except Exception as e:
-        st.warning(f"Translation failed: {str(e)}. Using original text.")
-        st.session_state.translations_cache[cache_key] = text
-        return text
+    # Test headers
+    "flat_shoe": "Flat Shoe",
+    "high_heel": "High Heel",
+    "sole_wedge": "Sole/Wedge",
+    "toe": "Toe",
+    "forepart": "Forepart",
+    "waist": "Waist",
+    "heel": "Heel",
+    "heel_height": "Heel Height",
+    "cm_5_8": "5CM-8CM",
+    "above_8cm": "Above 8CM",
+    
+    # Table headers
+    "item": "Item",
+    "standard": "Standard",
+    "result": "Result",
+    "comments": "Comments",
+    "remark": "Remark",
+    
+    # Components
+    "buckle": "Buckle",
+    "strap": "Strap",
+    "eyelet": "Eyelet",
+    "studs": "Studs",
+    "diamond_bow": "Diamond/Bow",
+    "top_lift": "Top lift",
+    "loop": "Loop",
+    "toe_post": "Toe Post Attachment",
+    "zipper": "Zipper",
+    "perment_set": "Perment set at 400N",
+    
+    # Component standards
+    "buckle_std": "20 kg/200N",
+    "strap_std": "20 kg/200N",
+    "eyelet_std": "20 kg/200N",
+    "studs_std": "20 kg/200N",
+    "diamond_std": "7KG/70N",
+    "top_lift_std": "15 kg/140N",
+    "loop_std": "20 KG/200N",
+    "toe_post_std": "EVA/Rubber: 150N, Others: 200N",
+    "zipper_std": "25 kg/250N",
+    "perment_set_std": "Max deformation ≤ 15%",
+    
+    # Rust test
+    "rust_test_full": "RUST TEST",
+    
+    # Flexing test
+    "upper": "Upper",
+    "shoe_flex": "Shoe Flex",
+    "foxing": "Foxing",
+    "upper_std": "250,000 cycles",
+    "shoe_flex_std": "100,000 cycles",
+    "foxing_std": "≥ 2.0 N/mm",
+    
+    # Abrasion test
+    "top_lift_abrasion": "Top Lift",
+    "outsole_abrasion": "Outsole Abrasion",
+    "outsole_abrasion_std": "Rubber & PU: 300mm³, TPR: 350mm³, EVA: 700mm³, PVC: 250mm³",
+    
+    # Resistance test
+    "outsole_resistance": "Outsole",
+    "heel_fatigue": "Heel Fatigue",
+    "heel_fatigue_std": "20,000 cycles, Top lift area ≤ 1cm²",
+    
+    # Hardness test
+    "eva_hardness": "EVA",
+    "outsole_hardness": "Outsole Hardness",
+    
+    # Conclusion
+    "pass_label": "PASS",
+    "fail_label": "FAIL",
+    "accept_label": "ACCEPT",
+    
+    # Signatures
+    "verified_by": "Verified by:",
+    "testing_person": "Testing Person:",
+    "signature": "Signature",
+    
+    # Version
+    "version": "Version 2024.09"
+}
 
-# Helper function to get translated text with caching
+# Fixed Chinese texts for PDF (no translation needed)
+CHINESE_TEXTS = {
+    "company": "GRAND STEP (H.K.) LTD",
+    "title": "物理测试报告",
+    "test_location": "测试地点:",
+    "report_date": "报告日期:",
+    
+    # Section headers
+    "basic_info": "1. 基本信息",
+    "adhesive_test": "2. 粘合/拉力测试",
+    "components_test": "3. 配件物理测试",
+    "flexing_test": "4. 弯曲测试",
+    "abrasion_test": "5. 耐磨测试",
+    "resistance_test": "6. 阻力测试",
+    "hardness_test": "7. 硬度测试",
+    "conclusion": "8. 结论",
+    "rust_test": "防锈测试",
+    
+    # Labels
+    "report_no": "报告编号:",
+    "date_no": "日期/编号:",
+    "ci_no": "CI/订单号:",
+    "order_qty": "订单数量:",
+    "brand": "品牌:",
+    "produced_qty": "生产数量:",
+    "style_no": "款式号:",
+    "factory_trader": "工厂/贸易商:",
+    "sales": "销售:",
+    
+    # Standard note
+    "standard_note": "注：此标准仅为 Grand Step 公司标准。如有冲突，应遵循客户或第三方实验室标准",
+    
+    # Test headers
+    "flat_shoe": "平底鞋",
+    "high_heel": "高跟鞋",
+    "sole_wedge": "鞋底/楔形",
+    "toe": "鞋头",
+    "forepart": "前掌",
+    "waist": "腰窝",
+    "heel": "后跟",
+    "heel_height": "后跟高度",
+    "cm_5_8": "5厘米-8厘米",
+    "above_8cm": "8厘米以上",
+    
+    # Table headers
+    "item": "项目",
+    "standard": "标准",
+    "result": "结果",
+    "comments": "备注",
+    "remark": "备注",
+    
+    # Components
+    "buckle": "鞋扣",
+    "strap": "饰带",
+    "eyelet": "眼扣",
+    "studs": "饰钉",
+    "diamond_bow": "钻石/蝴蝶结",
+    "top_lift": "天皮",
+    "loop": "穿扣",
+    "toe_post": "趾柱附件",
+    "zipper": "拉链头",
+    "perment_set": "400N永久变形测试",
+    
+    # Component standards
+    "buckle_std": "20 kg/200N",
+    "strap_std": "20 kg/200N",
+    "eyelet_std": "20 kg/200N",
+    "studs_std": "20 kg/200N",
+    "diamond_std": "7KG/70N",
+    "top_lift_std": "15 kg/140N",
+    "loop_std": "20 KG/200N",
+    "toe_post_std": "EVA/橡胶: 150N, 其他: 200N",
+    "zipper_std": "25 kg/250N",
+    "perment_set_std": "最大变形 ≤ 15%",
+    
+    # Rust test
+    "rust_test_full": "防锈测试",
+    
+    # Flexing test
+    "upper": "鞋面",
+    "shoe_flex": "鞋弯曲",
+    "foxing": "围条",
+    "upper_std": "250,000次循环",
+    "shoe_flex_std": "100,000次循环",
+    "foxing_std": "≥ 2.0 N/mm",
+    
+    # Abrasion test
+    "top_lift_abrasion": "天皮",
+    "outsole_abrasion": "外底耐磨",
+    "outsole_abrasion_std": "橡胶 & PU: 300mm³, TPR: 350mm³, EVA: 700mm³, PVC: 250mm³",
+    
+    # Resistance test
+    "outsole_resistance": "外底",
+    "heel_fatigue": "后跟疲劳",
+    "heel_fatigue_std": "20,000次循环，天皮区域≤1cm²",
+    
+    # Hardness test
+    "eva_hardness": "EVA",
+    "outsole_hardness": "外底硬度",
+    
+    # Conclusion
+    "pass_label": "通过",
+    "fail_label": "不通过",
+    "accept_label": "接受",
+    
+    # Signatures
+    "verified_by": "审核人:",
+    "testing_person": "测试人员:",
+    "signature": "签名",
+    
+    # Version
+    "version": "版本 2024.09"
+}
+
+def get_pdf_text(key, pdf_lang):
+    """Get text for PDF based on language (English or Chinese)"""
+    if pdf_lang == "en":
+        return ENGLISH_TEXTS.get(key, key)
+    else:
+        return CHINESE_TEXTS.get(key, key)
+
+# Helper function to get translated text for UI with caching
 def get_text(key, fallback=None):
     """Get translated text based on current UI language"""
     lang = st.session_state.ui_language
     
-    # Base English texts
+    # Base English texts for UI
     texts = {
         "title": "Physical Test Report",
         "basic_info": "Basic Information",
@@ -419,16 +615,35 @@ def get_text(key, fallback=None):
     
     text = texts.get(key, fallback or key)
     
-    # Translate if needed
+    # Translate if needed for UI only (not for PDF)
     if lang == "zh" and openai_client:
-        return translate_text(text, "zh")
+        try:
+            # Check cache
+            cache_key = f"ui_{text}_{lang}"
+            if cache_key in st.session_state.translations_cache:
+                return st.session_state.translations_cache[cache_key]
+            
+            # Don't translate numbers or alphanumeric codes
+            if text.strip().replace('.', '').replace(',', '').replace('-', '').isdigit():
+                st.session_state.translations_cache[cache_key] = text
+                return text
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": f"Translate the following text to Chinese. Only return the translation, no explanations. Preserve any numbers, dates, and special formatting."},
+                    {"role": "user", "content": text}
+                ],
+                temperature=0.1,
+                max_tokens=500
+            )
+            
+            translated_text = response.choices[0].message.content.strip()
+            st.session_state.translations_cache[cache_key] = translated_text
+            return translated_text
+        except Exception as e:
+            return text
     return text
-
-def translate_pdf_content(text, pdf_lang):
-    """Translate text for PDF based on selected language"""
-    if pdf_lang == "en" or not openai_client:
-        return text
-    return translate_text(text, "zh")
 
 def get_test_result_display(result):
     """Get styled test result display"""
@@ -442,8 +657,6 @@ def get_test_result_display(result):
 # Enhanced PDF Generation with Headers and Footers
 class PDFWithHeaderFooter(SimpleDocTemplate):
     def __init__(self, *args, **kwargs):
-        self.header_text = kwargs.pop('header_text', '')
-        self.location = kwargs.pop('location', '')
         self.pdf_language = kwargs.pop('pdf_language', 'en')
         self.selected_city = kwargs.pop('selected_city', '')
         self.chinese_city = kwargs.pop('chinese_city', '')
@@ -497,14 +710,14 @@ class PDFWithHeaderFooter(SimpleDocTemplate):
         china_tz = pytz.timezone('Asia/Shanghai')
         current_time = datetime.now(china_tz)
         
-        if self.pdf_language == "zh" and self.chinese_city:
-            location_info = f"测试地点: {self.selected_city} ({self.chinese_city})"
+        if self.pdf_language == "zh":
+            location_info = f"{get_pdf_text('test_location', 'zh')} {self.selected_city} ({self.chinese_city})"
         else:
-            location_info = f"Test Location: {self.selected_city}"
+            location_info = f"{get_pdf_text('test_location', 'en')} {self.selected_city}"
         
         self.canv.drawString(0.5*inch, 0.25*inch, location_info)
         
-        timestamp = f"Generated: {current_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        timestamp = f"{get_pdf_text('report_date', self.pdf_language).replace(':', '')} {current_time.strftime('%Y-%m-%d %H:%M:%S')}"
         self.canv.drawCentredString(self.pagesize[0]/2.0, 0.25*inch, timestamp)
         
         page_num = f"Page {self.page}"
@@ -526,6 +739,7 @@ def generate_pdf():
     
     if pdf_lang == "zh":
         try:
+            # Try to register Chinese fonts
             try:
                 pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
                 chinese_font = 'STSong-Light'
@@ -548,8 +762,6 @@ def generate_pdf():
         pagesize=A4,
         topMargin=0.8*inch,
         bottomMargin=0.8*inch,
-        header_text="GRAND STEP PHYSICAL TEST REPORT",
-        location=f"{selected_city}",
         pdf_language=pdf_lang,
         selected_city=selected_city,
         chinese_city=chinese_city,
@@ -631,20 +843,29 @@ def generate_pdf():
         fontName=normal_font
     )
     
-    # Helper function
-    def create_paragraph(text, style=normal_style, bold=False):
-        if bold:
-            font_name = bold_font
-        else:
-            font_name = normal_font
+    bold_style = ParagraphStyle(
+        'BoldStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=12,
+        fontName=bold_font,
+        textColor=colors.HexColor('#2c3e50')
+    )
+    
+    # Helper function to create paragraphs with proper font
+    def create_paragraph(text, bold=False, style=None):
+        if style is None:
+            style = bold_style if bold else normal_style
         
-        custom_style = ParagraphStyle(
-            f"CustomStyle_{bold}",
-            parent=style,
-            fontName=font_name
-        )
+        # Ensure proper font is used based on language
+        if pdf_lang == "zh" and chinese_font != 'Helvetica':
+            style = ParagraphStyle(
+                f"CustomStyle_{bold}",
+                parent=style,
+                fontName=chinese_font if not bold else chinese_font
+            )
         
-        return Paragraph(text, custom_style)
+        return Paragraph(str(text), style)
     
     # Get values from session state
     report_no = st.session_state.get('report_no', '')
@@ -659,22 +880,17 @@ def generate_pdf():
     
     # Company Header
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("GRAND STEP (H.K.) LTD", company_style))
+    elements.append(Paragraph(get_pdf_text("company", pdf_lang), company_style))
     
     # Title
-    report_title = translate_pdf_content("PHYSICAL TEST REPORT", pdf_lang)
-    elements.append(Paragraph(report_title, title_style))
+    elements.append(Paragraph(get_pdf_text("title", pdf_lang), title_style))
     
     # Location and date
     china_tz = pytz.timezone('Asia/Shanghai')
     current_time = datetime.now(china_tz)
     
-    if pdf_lang == "zh":
-        location_text = translate_pdf_content(f"测试地点: {selected_city} ({chinese_city})", pdf_lang)
-    else:
-        location_text = f"Test Location: {selected_city}"
-    
-    date_text = translate_pdf_content(f"Report Date: {current_time.strftime('%Y-%m-%d')}", pdf_lang)
+    location_text = f"{get_pdf_text('test_location', pdf_lang)} {selected_city} ({chinese_city})"
+    date_text = f"{get_pdf_text('report_date', pdf_lang)} {current_time.strftime('%Y-%m-%d')}"
     
     elements.append(Paragraph(location_text, subtitle_style))
     elements.append(Paragraph(date_text, subtitle_style))
@@ -683,37 +899,36 @@ def generate_pdf():
     elements.append(Spacer(1, 15))
     
     # 1. Basic Information Table
-    basic_title = translate_pdf_content("1. BASIC INFORMATION", pdf_lang)
-    elements.append(Paragraph(basic_title, heading_style))
+    elements.append(Paragraph(get_pdf_text("basic_info", pdf_lang), heading_style))
     elements.append(Spacer(1, 5))
     
     basic_data = [
         [
-            create_paragraph(translate_pdf_content("Report No.:", pdf_lang), bold=True), 
+            create_paragraph(get_pdf_text("report_no", pdf_lang), bold=True), 
             create_paragraph(report_no), 
-            create_paragraph(translate_pdf_content("Date/No.", pdf_lang), bold=True), 
+            create_paragraph(get_pdf_text("date_no", pdf_lang), bold=True), 
             create_paragraph(test_date.strftime('%Y-%m-%d') if hasattr(test_date, 'strftime') else str(test_date))
         ],
         [
-            create_paragraph(translate_pdf_content("CI / Order No.:", pdf_lang), bold=True), 
+            create_paragraph(get_pdf_text("ci_no", pdf_lang), bold=True), 
             create_paragraph(ci_no), 
-            create_paragraph(translate_pdf_content("Order QTY:", pdf_lang), bold=True), 
+            create_paragraph(get_pdf_text("order_qty", pdf_lang), bold=True), 
             create_paragraph(str(order_qty))
         ],
         [
-            create_paragraph(translate_pdf_content("Brand:", pdf_lang), bold=True), 
+            create_paragraph(get_pdf_text("brand", pdf_lang), bold=True), 
             create_paragraph(brand), 
-            create_paragraph(translate_pdf_content("Produced QTY:", pdf_lang), bold=True), 
+            create_paragraph(get_pdf_text("produced_qty", pdf_lang), bold=True), 
             create_paragraph(str(produced_qty))
         ],
         [
-            create_paragraph(translate_pdf_content("Style No.:", pdf_lang), bold=True), 
+            create_paragraph(get_pdf_text("style_no", pdf_lang), bold=True), 
             create_paragraph(style_no), 
-            create_paragraph(translate_pdf_content("Factory/Trader:", pdf_lang), bold=True), 
+            create_paragraph(get_pdf_text("factory_trader", pdf_lang), bold=True), 
             create_paragraph(factory)
         ],
         [
-            create_paragraph(translate_pdf_content("Sales:", pdf_lang), bold=True), 
+            create_paragraph(get_pdf_text("sales", pdf_lang), bold=True), 
             create_paragraph(sales), 
             create_paragraph("", bold=True), 
             create_paragraph("")
@@ -740,18 +955,13 @@ def generate_pdf():
     elements.append(Spacer(1, 15))
     
     # Standard note
-    standard_note = translate_pdf_content(
-        "Note: This is Grand Step Company Standard only. Any priority should follow Customer or 3rd Lab Standard",
-        pdf_lang
-    )
-    elements.append(Paragraph(standard_note, normal_style))
+    elements.append(Paragraph(get_pdf_text("standard_note", pdf_lang), normal_style))
     elements.append(Spacer(1, 10))
     
     # 2. Adhesive/Pull Test
     elements.append(PageBreak())
     
-    adhesive_title = translate_pdf_content("2. ADHESIVE/PULL TEST", pdf_lang)
-    elements.append(Paragraph(adhesive_title, heading_style))
+    elements.append(Paragraph(get_pdf_text("adhesive_test", pdf_lang), heading_style))
     elements.append(Spacer(1, 5))
     
     # Get adhesive test values
@@ -760,55 +970,50 @@ def generate_pdf():
     flat_shoe_waist_result = st.session_state.get('flat_shoe_waist_result', '')
     flat_shoe_heel_result = st.session_state.get('flat_shoe_heel_result', '')
     
-    high_heel_toe_result = st.session_state.get('high_heel_toe_result', '')
-    high_heel_forepart_result = st.session_state.get('high_heel_forepart_result', '')
-    high_heel_waist_result = st.session_state.get('high_heel_waist_result', '')
-    high_heel_heel_result = st.session_state.get('high_heel_heel_result', '')
-    
     adhesive_data = [
         [
-            create_paragraph(translate_pdf_content("Flat Shoe", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Standard", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Result", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("High Heel", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Sole/Wedge", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Standard", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Remark", pdf_lang), bold=True)
+            create_paragraph(get_pdf_text("flat_shoe", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("high_heel", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("sole_wedge", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("remark", pdf_lang), bold=True)
         ],
         [
-            create_paragraph(translate_pdf_content("Toe", pdf_lang)),
+            create_paragraph(get_pdf_text("toe", pdf_lang)),
             create_paragraph("12 kg / 3N"),
             create_paragraph(flat_shoe_toe_result),
-            create_paragraph(translate_pdf_content("Toe", pdf_lang)),
+            create_paragraph(get_pdf_text("toe", pdf_lang)),
             create_paragraph(""),
             create_paragraph("12 kg / 3N"),
             create_paragraph("")
         ],
         [
-            create_paragraph(translate_pdf_content("Forepart", pdf_lang)),
+            create_paragraph(get_pdf_text("forepart", pdf_lang)),
             create_paragraph("12 kg / 3N"),
             create_paragraph(flat_shoe_forepart_result),
-            create_paragraph(translate_pdf_content("Forepart", pdf_lang)),
+            create_paragraph(get_pdf_text("forepart", pdf_lang)),
             create_paragraph(""),
             create_paragraph("12 kg / 3N"),
             create_paragraph("")
         ],
         [
-            create_paragraph(translate_pdf_content("Waist", pdf_lang)),
+            create_paragraph(get_pdf_text("waist", pdf_lang)),
             create_paragraph("12 kg / 3N"),
             create_paragraph(flat_shoe_waist_result),
-            create_paragraph(translate_pdf_content("Waist", pdf_lang)),
+            create_paragraph(get_pdf_text("waist", pdf_lang)),
             create_paragraph(""),
             create_paragraph("12 kg / 3N"),
             create_paragraph("")
         ],
         [
-            create_paragraph(translate_pdf_content("Heel", pdf_lang)),
+            create_paragraph(get_pdf_text("heel", pdf_lang)),
             create_paragraph(""),
             create_paragraph(flat_shoe_heel_result),
-            create_paragraph(translate_pdf_content("Heel", pdf_lang)),
+            create_paragraph(get_pdf_text("heel", pdf_lang)),
             create_paragraph("60 kg/500N / 80 kg/800N"),
-            create_paragraph("Heel Height 5CM-8CM / Above 8CM"),
+            create_paragraph(f"{get_pdf_text('heel_height', pdf_lang)} {get_pdf_text('cm_5_8', pdf_lang)} / {get_pdf_text('above_8cm', pdf_lang)}"),
             create_paragraph("")
         ]
     ]
@@ -829,45 +1034,44 @@ def generate_pdf():
     elements.append(Spacer(1, 15))
     
     # 3. Components Physical Test
-    components_title = translate_pdf_content("3. COMPONENTS PHYSICAL TEST", pdf_lang)
-    elements.append(Paragraph(components_title, heading_style))
+    elements.append(Paragraph(get_pdf_text("components_test", pdf_lang), heading_style))
     elements.append(Spacer(1, 5))
     
     # Get components test values
     components_data = [
         [
-            create_paragraph(translate_pdf_content("Item", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Standard", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Result", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Comments", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Item", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Standard", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Result", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Comments", pdf_lang), bold=True)
+            create_paragraph(get_pdf_text("item", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("item", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True)
         ]
     ]
     
-    # Add component test rows
+    # Add component test rows using fixed texts
     components_list = [
-        ("Buckle 鞋扣", "20 kg/200N", st.session_state.get('buckle_result', ''), st.session_state.get('buckle_comments', ''),
-         "Top lift天皮", "15 kg/140N", st.session_state.get('top_lift_result', ''), st.session_state.get('top_lift_comments', '')),
-        ("Strap 饰带", "20 kg/200N", st.session_state.get('strap_result', ''), st.session_state.get('strap_comments', ''),
-         "Loop 穿扣", "20 KG/200N", st.session_state.get('loop_result', ''), st.session_state.get('loop_comments', '')),
-        ("Eyelet 眼扣", "20 kg/200N", st.session_state.get('eyelet_result', ''), st.session_state.get('eyelet_comments', ''),
-         "Toe Post Attachment", "EVA/Rubber: 150N, Others: 200N", st.session_state.get('toe_post_result', ''), st.session_state.get('toe_post_comments', '')),
-        ("Studs 饰钉", "20 kg/200N", st.session_state.get('studs_result', ''), st.session_state.get('studs_comments', ''),
-         "Zipper拉链头", "25 kg/250N", st.session_state.get('zipper_result', ''), st.session_state.get('zipper_comments', '')),
-        ("Diamond/Bow", "7KG/70N", st.session_state.get('diamond_result', ''), st.session_state.get('diamond_comments', ''),
-         "Perment set at 400N", "Max deformation ≤ 15%", st.session_state.get('perment_set_result', ''), st.session_state.get('perment_set_comments', ''))
+        (get_pdf_text("buckle", pdf_lang), get_pdf_text("buckle_std", pdf_lang), st.session_state.get('buckle_result', ''), st.session_state.get('buckle_comments', ''),
+         get_pdf_text("top_lift", pdf_lang), get_pdf_text("top_lift_std", pdf_lang), st.session_state.get('top_lift_result', ''), st.session_state.get('top_lift_comments', '')),
+        (get_pdf_text("strap", pdf_lang), get_pdf_text("strap_std", pdf_lang), st.session_state.get('strap_result', ''), st.session_state.get('strap_comments', ''),
+         get_pdf_text("loop", pdf_lang), get_pdf_text("loop_std", pdf_lang), st.session_state.get('loop_result', ''), st.session_state.get('loop_comments', '')),
+        (get_pdf_text("eyelet", pdf_lang), get_pdf_text("eyelet_std", pdf_lang), st.session_state.get('eyelet_result', ''), st.session_state.get('eyelet_comments', ''),
+         get_pdf_text("toe_post", pdf_lang), get_pdf_text("toe_post_std", pdf_lang), st.session_state.get('toe_post_result', ''), st.session_state.get('toe_post_comments', '')),
+        (get_pdf_text("studs", pdf_lang), get_pdf_text("studs_std", pdf_lang), st.session_state.get('studs_result', ''), st.session_state.get('studs_comments', ''),
+         get_pdf_text("zipper", pdf_lang), get_pdf_text("zipper_std", pdf_lang), st.session_state.get('zipper_result', ''), st.session_state.get('zipper_comments', '')),
+        (get_pdf_text("diamond_bow", pdf_lang), get_pdf_text("diamond_std", pdf_lang), st.session_state.get('diamond_result', ''), st.session_state.get('diamond_comments', ''),
+         get_pdf_text("perment_set", pdf_lang), get_pdf_text("perment_set_std", pdf_lang), st.session_state.get('perment_set_result', ''), st.session_state.get('perment_set_comments', ''))
     ]
     
     for comp1, std1, res1, com1, comp2, std2, res2, com2 in components_list:
         components_data.append([
-            create_paragraph(translate_pdf_content(comp1, pdf_lang)),
+            create_paragraph(comp1),
             create_paragraph(std1),
             create_paragraph(res1),
             create_paragraph(com1),
-            create_paragraph(translate_pdf_content(comp2, pdf_lang)),
+            create_paragraph(comp2),
             create_paragraph(std2),
             create_paragraph(res2),
             create_paragraph(com2)
@@ -888,20 +1092,19 @@ def generate_pdf():
     
     # Rust Test
     elements.append(Spacer(1, 10))
-    rust_title = translate_pdf_content("RUST TEST", pdf_lang)
-    elements.append(Paragraph(rust_title, subheading_style))
+    elements.append(Paragraph(get_pdf_text("rust_test_full", pdf_lang), subheading_style))
     
     rust_data = [
         [
-            create_paragraph(translate_pdf_content("Buckle", pdf_lang)),
+            create_paragraph(get_pdf_text("buckle", pdf_lang)),
             create_paragraph(st.session_state.get('rust_buckle_result', '')),
-            create_paragraph(translate_pdf_content("Eyelet", pdf_lang)),
+            create_paragraph(get_pdf_text("eyelet", pdf_lang)),
             create_paragraph(st.session_state.get('rust_eyelet_result', ''))
         ],
         [
-            create_paragraph(translate_pdf_content("Strap", pdf_lang)),
+            create_paragraph(get_pdf_text("strap", pdf_lang)),
             create_paragraph(st.session_state.get('rust_strap_result', '')),
-            create_paragraph(translate_pdf_content("Studs", pdf_lang)),
+            create_paragraph(get_pdf_text("studs", pdf_lang)),
             create_paragraph(st.session_state.get('rust_studs_result', ''))
         ]
     ]
@@ -919,33 +1122,32 @@ def generate_pdf():
     elements.append(PageBreak())
     
     # 4. Flexing Test
-    flexing_title = translate_pdf_content("4. FLEXING TEST", pdf_lang)
-    elements.append(Paragraph(flexing_title, heading_style))
+    elements.append(Paragraph(get_pdf_text("flexing_test", pdf_lang), heading_style))
     elements.append(Spacer(1, 5))
     
     # Get flexing test values
     flexing_data = [
         [
-            create_paragraph(translate_pdf_content("Item", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Standard", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Result", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Comments", pdf_lang), bold=True)
+            create_paragraph(get_pdf_text("item", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True)
         ],
         [
-            create_paragraph(translate_pdf_content("Upper", pdf_lang)),
-            create_paragraph("250,000 cycles"),
+            create_paragraph(get_pdf_text("upper", pdf_lang)),
+            create_paragraph(get_pdf_text("upper_std", pdf_lang)),
             create_paragraph(st.session_state.get('upper_flex_result', '')),
             create_paragraph(st.session_state.get('upper_flex_comments', ''))
         ],
         [
-            create_paragraph(translate_pdf_content("Shoe Flex", pdf_lang)),
-            create_paragraph("100,000 cycles"),
+            create_paragraph(get_pdf_text("shoe_flex", pdf_lang)),
+            create_paragraph(get_pdf_text("shoe_flex_std", pdf_lang)),
             create_paragraph(st.session_state.get('shoe_flex_result', '')),
             create_paragraph(st.session_state.get('shoe_flex_comments', ''))
         ],
         [
-            create_paragraph(translate_pdf_content("Foxing", pdf_lang)),
-            create_paragraph("≥ 2.0 N/mm"),
+            create_paragraph(get_pdf_text("foxing", pdf_lang)),
+            create_paragraph(get_pdf_text("foxing_std", pdf_lang)),
             create_paragraph(st.session_state.get('foxing_result', '')),
             create_paragraph(st.session_state.get('foxing_comments', ''))
         ]
@@ -966,26 +1168,25 @@ def generate_pdf():
     
     # 5. Abrasion Test
     elements.append(Spacer(1, 15))
-    abrasion_title = translate_pdf_content("5. ABRASION TEST", pdf_lang)
-    elements.append(Paragraph(abrasion_title, heading_style))
+    elements.append(Paragraph(get_pdf_text("abrasion_test", pdf_lang), heading_style))
     elements.append(Spacer(1, 5))
     
     abrasion_data = [
         [
-            create_paragraph(translate_pdf_content("Item", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Standard", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Result", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Comments", pdf_lang), bold=True)
+            create_paragraph(get_pdf_text("item", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True)
         ],
         [
-            create_paragraph(translate_pdf_content("Top Lift", pdf_lang)),
+            create_paragraph(get_pdf_text("top_lift_abrasion", pdf_lang)),
             create_paragraph(""),
             create_paragraph(st.session_state.get('top_lift_abrasion_result', '')),
             create_paragraph(st.session_state.get('top_lift_abrasion_comments', ''))
         ],
         [
-            create_paragraph(translate_pdf_content("Outsole Abrasion", pdf_lang)),
-            create_paragraph("Rubber & PU: 300mm³, TPR: 350mm³, EVA: 700mm³, PVC: 250mm³"),
+            create_paragraph(get_pdf_text("outsole_abrasion", pdf_lang)),
+            create_paragraph(get_pdf_text("outsole_abrasion_std", pdf_lang)),
             create_paragraph(st.session_state.get('outsole_abrasion_result', '')),
             create_paragraph(st.session_state.get('outsole_abrasion_comments', ''))
         ]
@@ -1006,26 +1207,25 @@ def generate_pdf():
     
     # 6. Resistance Test
     elements.append(Spacer(1, 15))
-    resistance_title = translate_pdf_content("6. RESISTANCE TEST", pdf_lang)
-    elements.append(Paragraph(resistance_title, heading_style))
+    elements.append(Paragraph(get_pdf_text("resistance_test", pdf_lang), heading_style))
     elements.append(Spacer(1, 5))
     
     resistance_data = [
         [
-            create_paragraph(translate_pdf_content("Item", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Standard", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Result", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Comments", pdf_lang), bold=True)
+            create_paragraph(get_pdf_text("item", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True)
         ],
         [
-            create_paragraph(translate_pdf_content("Outsole", pdf_lang)),
+            create_paragraph(get_pdf_text("outsole_resistance", pdf_lang)),
             create_paragraph(""),
             create_paragraph(st.session_state.get('outsole_resistance_result', '')),
             create_paragraph(st.session_state.get('outsole_resistance_comments', ''))
         ],
         [
-            create_paragraph(translate_pdf_content("Heel Fatigue", pdf_lang)),
-            create_paragraph("20,000 cycles, Top lift area ≤ 1cm²"),
+            create_paragraph(get_pdf_text("heel_fatigue", pdf_lang)),
+            create_paragraph(get_pdf_text("heel_fatigue_std", pdf_lang)),
             create_paragraph(st.session_state.get('heel_fatigue_result', '')),
             create_paragraph(st.session_state.get('heel_fatigue_comments', ''))
         ]
@@ -1046,25 +1246,24 @@ def generate_pdf():
     
     # 7. Hardness Test
     elements.append(Spacer(1, 15))
-    hardness_title = translate_pdf_content("7. HARDNESS TEST", pdf_lang)
-    elements.append(Paragraph(hardness_title, heading_style))
+    elements.append(Paragraph(get_pdf_text("hardness_test", pdf_lang), heading_style))
     elements.append(Spacer(1, 5))
     
     hardness_data = [
         [
-            create_paragraph(translate_pdf_content("Item", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Standard", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Result", pdf_lang), bold=True),
-            create_paragraph(translate_pdf_content("Comments", pdf_lang), bold=True)
+            create_paragraph(get_pdf_text("item", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True)
         ],
         [
-            create_paragraph(translate_pdf_content("EVA", pdf_lang)),
+            create_paragraph(get_pdf_text("eva_hardness", pdf_lang)),
             create_paragraph(""),
             create_paragraph(st.session_state.get('eva_hardness_result', '')),
             create_paragraph(st.session_state.get('eva_hardness_comments', ''))
         ],
         [
-            create_paragraph(translate_pdf_content("Outsole Hardness", pdf_lang)),
+            create_paragraph(get_pdf_text("outsole_hardness", pdf_lang)),
             create_paragraph(""),
             create_paragraph(st.session_state.get('outsole_hardness_result', '')),
             create_paragraph(st.session_state.get('outsole_hardness_comments', ''))
@@ -1086,8 +1285,7 @@ def generate_pdf():
     
     # 8. Conclusion
     elements.append(Spacer(1, 20))
-    conclusion_title = translate_pdf_content("8. CONCLUSION", pdf_lang)
-    elements.append(Paragraph(conclusion_title, heading_style))
+    elements.append(Paragraph(get_pdf_text("conclusion", pdf_lang), heading_style))
     elements.append(Spacer(1, 10))
     
     # Get conclusion values
@@ -1097,11 +1295,11 @@ def generate_pdf():
     
     conclusion_data = [
         [
-            create_paragraph(translate_pdf_content("PASS", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("pass_label", pdf_lang), bold=True),
             create_paragraph(pass_result),
-            create_paragraph(translate_pdf_content("FAIL", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("fail_label", pdf_lang), bold=True),
             create_paragraph(fail_result),
-            create_paragraph(translate_pdf_content("ACCEPT", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("accept_label", pdf_lang), bold=True),
             create_paragraph(accept_result)
         ]
     ]
@@ -1127,10 +1325,10 @@ def generate_pdf():
     
     signature_data = [
         [
-            create_paragraph(translate_pdf_content("Verified by:", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("verified_by", pdf_lang), bold=True),
             create_paragraph(verified_by),
             create_paragraph(""),
-            create_paragraph(translate_pdf_content("Testing Person:", pdf_lang), bold=True),
+            create_paragraph(get_pdf_text("testing_person", pdf_lang), bold=True),
             create_paragraph(testing_person)
         ],
         [
@@ -1142,10 +1340,10 @@ def generate_pdf():
         ],
         [
             create_paragraph(""),
-            create_paragraph("Signature"),
+            create_paragraph(get_pdf_text("signature", pdf_lang)),
             create_paragraph(""),
             create_paragraph(""),
-            create_paragraph("Signature")
+            create_paragraph(get_pdf_text("signature", pdf_lang))
         ]
     ]
     
@@ -1160,7 +1358,7 @@ def generate_pdf():
     elements.append(signature_table)
     
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("Version 2024.09", normal_style))
+    elements.append(Paragraph(get_pdf_text("version", pdf_lang), normal_style))
     
     # Build PDF
     doc.build(elements)
