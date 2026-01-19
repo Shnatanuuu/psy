@@ -610,13 +610,16 @@ def get_text(key, fallback=None):
         "outsole_hardness": "Outsole Hardness",
         "verified_by": "Verified by",
         "testing_person": "Testing Person",
-        "version": "Version"
+        "version": "Version",
+        "pass": "PASS",
+        "fail": "FAIL",
+        "accept": "ACCEPT"
     }
     
     text = texts.get(key, fallback or key)
     
     # Translate if needed for UI only (not for PDF)
-    if lang == "zh" and openai_client:
+    if lang == "zh" and openai_client and key not in ["pass", "fail", "accept"]:
         try:
             # Check cache
             cache_key = f"ui_{text}_{lang}"
@@ -631,7 +634,7 @@ def get_text(key, fallback=None):
             response = openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": f"Translate the following text to Chinese. Only return the translation, no explanations. Preserve any numbers, dates, and special formatting."},
+                    {"role": "system", "content": "Translate the following text to Chinese. Only return the translation, no explanations. Preserve any numbers, dates, and special formatting."},
                     {"role": "user", "content": text}
                 ],
                 temperature=0.1,
@@ -725,6 +728,14 @@ class PDFWithHeaderFooter(SimpleDocTemplate):
         
         self.canv.restoreState()
 
+def truncate_text(text, max_length=50):
+    """Truncate text if too long for PDF cells"""
+    if not text:
+        return ""
+    if len(str(text)) > max_length:
+        return str(text)[:max_length-3] + "..."
+    return str(text)
+
 def generate_pdf():
     """Generate PDF report"""
     buffer = io.BytesIO()
@@ -756,12 +767,14 @@ def generate_pdf():
         except Exception as e:
             chinese_font = 'Helvetica'
     
-    # Create PDF
+    # Create PDF with proper margins
     doc = PDFWithHeaderFooter(
         buffer, 
         pagesize=A4,
         topMargin=0.8*inch,
         bottomMargin=0.8*inch,
+        leftMargin=0.5*inch,
+        rightMargin=0.5*inch,
         pdf_language=pdf_lang,
         selected_city=selected_city,
         chinese_city=chinese_city,
@@ -852,30 +865,45 @@ def generate_pdf():
         textColor=colors.HexColor('#2c3e50')
     )
     
-    # Helper function to create paragraphs with proper font
-    def create_paragraph(text, bold=False, style=None):
+    small_style = ParagraphStyle(
+        'SmallStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+        fontName=normal_font
+    )
+    
+    # Helper function to create paragraphs with proper font and text wrapping
+    def create_paragraph(text, bold=False, style=None, small=False):
         if style is None:
-            style = bold_style if bold else normal_style
+            if small:
+                style = small_style
+            else:
+                style = bold_style if bold else normal_style
+        
+        # Truncate long text to prevent overflow
+        clean_text = truncate_text(text)
         
         # Ensure proper font is used based on language
         if pdf_lang == "zh" and chinese_font != 'Helvetica':
             style = ParagraphStyle(
-                f"CustomStyle_{bold}",
+                f"CustomStyle_{bold}_{small}",
                 parent=style,
-                fontName=chinese_font if not bold else chinese_font
+                fontName=chinese_font if not bold else chinese_font,
+                wordWrap='LTR'
             )
         
-        return Paragraph(str(text), style)
+        return Paragraph(str(clean_text), style)
     
     # Get values from session state
-    report_no = st.session_state.get('report_no', '')
-    ci_no = st.session_state.get('ci_no', '')
-    order_qty = st.session_state.get('order_qty', '')
-    style_no = st.session_state.get('style_no', '')
-    brand = st.session_state.get('brand', '')
-    produced_qty = st.session_state.get('produced_qty', '')
-    factory = st.session_state.get('factory', '')
-    sales = st.session_state.get('sales', '')
+    report_no = truncate_text(st.session_state.get('report_no', ''), 15)
+    ci_no = truncate_text(st.session_state.get('ci_no', ''), 15)
+    order_qty = truncate_text(st.session_state.get('order_qty', ''), 10)
+    style_no = truncate_text(st.session_state.get('style_no', ''), 15)
+    brand = truncate_text(st.session_state.get('brand', ''), 15)
+    produced_qty = truncate_text(st.session_state.get('produced_qty', ''), 10)
+    factory = truncate_text(st.session_state.get('factory', ''), 20)
+    sales = truncate_text(st.session_state.get('sales', ''), 15)
     test_date = st.session_state.get('test_date', datetime.now())
     
     # Company Header
@@ -940,8 +968,7 @@ def generate_pdf():
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0fdf4')),
         ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#f0fdf4')),
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (0, -1), bold_font),
         ('FONTNAME', (2, 0), (2, -1), bold_font),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
@@ -955,7 +982,7 @@ def generate_pdf():
     elements.append(Spacer(1, 15))
     
     # Standard note
-    elements.append(Paragraph(get_pdf_text("standard_note", pdf_lang), normal_style))
+    elements.append(Paragraph(get_pdf_text("standard_note", pdf_lang), small_style))
     elements.append(Spacer(1, 10))
     
     # 2. Adhesive/Pull Test
@@ -965,67 +992,67 @@ def generate_pdf():
     elements.append(Spacer(1, 5))
     
     # Get adhesive test values
-    flat_shoe_toe_result = st.session_state.get('flat_shoe_toe_result', '')
-    flat_shoe_forepart_result = st.session_state.get('flat_shoe_forepart_result', '')
-    flat_shoe_waist_result = st.session_state.get('flat_shoe_waist_result', '')
-    flat_shoe_heel_result = st.session_state.get('flat_shoe_heel_result', '')
+    flat_shoe_toe_result = truncate_text(st.session_state.get('flat_shoe_toe_result', ''), 8)
+    flat_shoe_forepart_result = truncate_text(st.session_state.get('flat_shoe_forepart_result', ''), 8)
+    flat_shoe_waist_result = truncate_text(st.session_state.get('flat_shoe_waist_result', ''), 8)
+    flat_shoe_heel_result = truncate_text(st.session_state.get('flat_shoe_heel_result', ''), 8)
     
     adhesive_data = [
         [
-            create_paragraph(get_pdf_text("flat_shoe", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("high_heel", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("sole_wedge", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("remark", pdf_lang), bold=True)
+            create_paragraph(get_pdf_text("flat_shoe", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("high_heel", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("sole_wedge", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("remark", pdf_lang), bold=True, small=True)
         ],
         [
-            create_paragraph(get_pdf_text("toe", pdf_lang)),
-            create_paragraph("12 kg / 3N"),
-            create_paragraph(flat_shoe_toe_result),
-            create_paragraph(get_pdf_text("toe", pdf_lang)),
-            create_paragraph(""),
-            create_paragraph("12 kg / 3N"),
-            create_paragraph("")
+            create_paragraph(get_pdf_text("toe", pdf_lang), small=True),
+            create_paragraph("12 kg / 3N", small=True),
+            create_paragraph(flat_shoe_toe_result, small=True),
+            create_paragraph(get_pdf_text("toe", pdf_lang), small=True),
+            create_paragraph("", small=True),
+            create_paragraph("12 kg / 3N", small=True),
+            create_paragraph("", small=True)
         ],
         [
-            create_paragraph(get_pdf_text("forepart", pdf_lang)),
-            create_paragraph("12 kg / 3N"),
-            create_paragraph(flat_shoe_forepart_result),
-            create_paragraph(get_pdf_text("forepart", pdf_lang)),
-            create_paragraph(""),
-            create_paragraph("12 kg / 3N"),
-            create_paragraph("")
+            create_paragraph(get_pdf_text("forepart", pdf_lang), small=True),
+            create_paragraph("12 kg / 3N", small=True),
+            create_paragraph(flat_shoe_forepart_result, small=True),
+            create_paragraph(get_pdf_text("forepart", pdf_lang), small=True),
+            create_paragraph("", small=True),
+            create_paragraph("12 kg / 3N", small=True),
+            create_paragraph("", small=True)
         ],
         [
-            create_paragraph(get_pdf_text("waist", pdf_lang)),
-            create_paragraph("12 kg / 3N"),
-            create_paragraph(flat_shoe_waist_result),
-            create_paragraph(get_pdf_text("waist", pdf_lang)),
-            create_paragraph(""),
-            create_paragraph("12 kg / 3N"),
-            create_paragraph("")
+            create_paragraph(get_pdf_text("waist", pdf_lang), small=True),
+            create_paragraph("12 kg / 3N", small=True),
+            create_paragraph(flat_shoe_waist_result, small=True),
+            create_paragraph(get_pdf_text("waist", pdf_lang), small=True),
+            create_paragraph("", small=True),
+            create_paragraph("12 kg / 3N", small=True),
+            create_paragraph("", small=True)
         ],
         [
-            create_paragraph(get_pdf_text("heel", pdf_lang)),
-            create_paragraph(""),
-            create_paragraph(flat_shoe_heel_result),
-            create_paragraph(get_pdf_text("heel", pdf_lang)),
-            create_paragraph("60 kg/500N / 80 kg/800N"),
-            create_paragraph(f"{get_pdf_text('heel_height', pdf_lang)} {get_pdf_text('cm_5_8', pdf_lang)} / {get_pdf_text('above_8cm', pdf_lang)}"),
-            create_paragraph("")
+            create_paragraph(get_pdf_text("heel", pdf_lang), small=True),
+            create_paragraph("", small=True),
+            create_paragraph(flat_shoe_heel_result, small=True),
+            create_paragraph(get_pdf_text("heel", pdf_lang), small=True),
+            create_paragraph("60 kg/500N / 80 kg/800N", small=True),
+            create_paragraph(f"{get_pdf_text('heel_height', pdf_lang)} {get_pdf_text('cm_5_8', pdf_lang)} / {get_pdf_text('above_8cm', pdf_lang)}", small=True),
+            create_paragraph("", small=True)
         ]
     ]
     
-    adhesive_table = Table(adhesive_data, colWidths=[0.9*inch, 1.2*inch, 0.9*inch, 0.9*inch, 1.5*inch, 1.5*inch, 1.1*inch])
+    adhesive_table = Table(adhesive_data, colWidths=[0.8*inch, 1.0*inch, 0.7*inch, 0.8*inch, 1.3*inch, 1.3*inch, 1.0*inch])
     adhesive_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
         ('BACKGROUND', (3, 0), (-1, 0), colors.HexColor('#059669')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), bold_font),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9f9f9')])
@@ -1040,50 +1067,74 @@ def generate_pdf():
     # Get components test values
     components_data = [
         [
-            create_paragraph(get_pdf_text("item", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("item", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("result", pdf_lang), bold=True),
-            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True)
+            create_paragraph(get_pdf_text("item", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("item", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("standard", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("result", pdf_lang), bold=True, small=True),
+            create_paragraph(get_pdf_text("comments", pdf_lang), bold=True, small=True)
         ]
     ]
     
     # Add component test rows using fixed texts
     components_list = [
-        (get_pdf_text("buckle", pdf_lang), get_pdf_text("buckle_std", pdf_lang), st.session_state.get('buckle_result', ''), st.session_state.get('buckle_comments', ''),
-         get_pdf_text("top_lift", pdf_lang), get_pdf_text("top_lift_std", pdf_lang), st.session_state.get('top_lift_result', ''), st.session_state.get('top_lift_comments', '')),
-        (get_pdf_text("strap", pdf_lang), get_pdf_text("strap_std", pdf_lang), st.session_state.get('strap_result', ''), st.session_state.get('strap_comments', ''),
-         get_pdf_text("loop", pdf_lang), get_pdf_text("loop_std", pdf_lang), st.session_state.get('loop_result', ''), st.session_state.get('loop_comments', '')),
-        (get_pdf_text("eyelet", pdf_lang), get_pdf_text("eyelet_std", pdf_lang), st.session_state.get('eyelet_result', ''), st.session_state.get('eyelet_comments', ''),
-         get_pdf_text("toe_post", pdf_lang), get_pdf_text("toe_post_std", pdf_lang), st.session_state.get('toe_post_result', ''), st.session_state.get('toe_post_comments', '')),
-        (get_pdf_text("studs", pdf_lang), get_pdf_text("studs_std", pdf_lang), st.session_state.get('studs_result', ''), st.session_state.get('studs_comments', ''),
-         get_pdf_text("zipper", pdf_lang), get_pdf_text("zipper_std", pdf_lang), st.session_state.get('zipper_result', ''), st.session_state.get('zipper_comments', '')),
-        (get_pdf_text("diamond_bow", pdf_lang), get_pdf_text("diamond_std", pdf_lang), st.session_state.get('diamond_result', ''), st.session_state.get('diamond_comments', ''),
-         get_pdf_text("perment_set", pdf_lang), get_pdf_text("perment_set_std", pdf_lang), st.session_state.get('perment_set_result', ''), st.session_state.get('perment_set_comments', ''))
+        (get_pdf_text("buckle", pdf_lang), get_pdf_text("buckle_std", pdf_lang), 
+         truncate_text(st.session_state.get('buckle_result', ''), 8), 
+         truncate_text(st.session_state.get('buckle_comments', ''), 12),
+         get_pdf_text("top_lift", pdf_lang), get_pdf_text("top_lift_std", pdf_lang), 
+         truncate_text(st.session_state.get('top_lift_result', ''), 8), 
+         truncate_text(st.session_state.get('top_lift_comments', ''), 12)),
+        
+        (get_pdf_text("strap", pdf_lang), get_pdf_text("strap_std", pdf_lang), 
+         truncate_text(st.session_state.get('strap_result', ''), 8), 
+         truncate_text(st.session_state.get('strap_comments', ''), 12),
+         get_pdf_text("loop", pdf_lang), get_pdf_text("loop_std", pdf_lang), 
+         truncate_text(st.session_state.get('loop_result', ''), 8), 
+         truncate_text(st.session_state.get('loop_comments', ''), 12)),
+        
+        (get_pdf_text("eyelet", pdf_lang), get_pdf_text("eyelet_std", pdf_lang), 
+         truncate_text(st.session_state.get('eyelet_result', ''), 8), 
+         truncate_text(st.session_state.get('eyelet_comments', ''), 12),
+         get_pdf_text("toe_post", pdf_lang), get_pdf_text("toe_post_std", pdf_lang), 
+         truncate_text(st.session_state.get('toe_post_result', ''), 8), 
+         truncate_text(st.session_state.get('toe_post_comments', ''), 12)),
+        
+        (get_pdf_text("studs", pdf_lang), get_pdf_text("studs_std", pdf_lang), 
+         truncate_text(st.session_state.get('studs_result', ''), 8), 
+         truncate_text(st.session_state.get('studs_comments', ''), 12),
+         get_pdf_text("zipper", pdf_lang), get_pdf_text("zipper_std", pdf_lang), 
+         truncate_text(st.session_state.get('zipper_result', ''), 8), 
+         truncate_text(st.session_state.get('zipper_comments', ''), 12)),
+        
+        (get_pdf_text("diamond_bow", pdf_lang), get_pdf_text("diamond_std", pdf_lang), 
+         truncate_text(st.session_state.get('diamond_result', ''), 8), 
+         truncate_text(st.session_state.get('diamond_comments', ''), 12),
+         get_pdf_text("perment_set", pdf_lang), get_pdf_text("perment_set_std", pdf_lang), 
+         truncate_text(st.session_state.get('perment_set_result', ''), 8), 
+         truncate_text(st.session_state.get('perment_set_comments', ''), 12))
     ]
     
     for comp1, std1, res1, com1, comp2, std2, res2, com2 in components_list:
         components_data.append([
-            create_paragraph(comp1),
-            create_paragraph(std1),
-            create_paragraph(res1),
-            create_paragraph(com1),
-            create_paragraph(comp2),
-            create_paragraph(std2),
-            create_paragraph(res2),
-            create_paragraph(com2)
+            create_paragraph(comp1, small=True),
+            create_paragraph(std1, small=True),
+            create_paragraph(res1, small=True),
+            create_paragraph(com1, small=True),
+            create_paragraph(comp2, small=True),
+            create_paragraph(std2, small=True),
+            create_paragraph(res2, small=True),
+            create_paragraph(com2, small=True)
         ])
     
-    components_table = Table(components_data, colWidths=[1.0*inch, 1.0*inch, 0.8*inch, 1.0*inch, 1.0*inch, 1.0*inch, 0.8*inch, 1.0*inch])
+    components_table = Table(components_data, colWidths=[0.8*inch, 0.9*inch, 0.6*inch, 0.9*inch, 0.8*inch, 0.9*inch, 0.6*inch, 0.9*inch])
     components_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), bold_font),
-        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('FONTSIZE', (0, 0), (-1, -1), 6.5),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9f9f9')])
@@ -1097,15 +1148,15 @@ def generate_pdf():
     rust_data = [
         [
             create_paragraph(get_pdf_text("buckle", pdf_lang)),
-            create_paragraph(st.session_state.get('rust_buckle_result', '')),
+            create_paragraph(truncate_text(st.session_state.get('rust_buckle_result', ''), 10)),
             create_paragraph(get_pdf_text("eyelet", pdf_lang)),
-            create_paragraph(st.session_state.get('rust_eyelet_result', ''))
+            create_paragraph(truncate_text(st.session_state.get('rust_eyelet_result', ''), 10))
         ],
         [
             create_paragraph(get_pdf_text("strap", pdf_lang)),
-            create_paragraph(st.session_state.get('rust_strap_result', '')),
+            create_paragraph(truncate_text(st.session_state.get('rust_strap_result', ''), 10)),
             create_paragraph(get_pdf_text("studs", pdf_lang)),
-            create_paragraph(st.session_state.get('rust_studs_result', ''))
+            create_paragraph(truncate_text(st.session_state.get('rust_studs_result', ''), 10))
         ]
     ]
     
@@ -1136,24 +1187,24 @@ def generate_pdf():
         [
             create_paragraph(get_pdf_text("upper", pdf_lang)),
             create_paragraph(get_pdf_text("upper_std", pdf_lang)),
-            create_paragraph(st.session_state.get('upper_flex_result', '')),
-            create_paragraph(st.session_state.get('upper_flex_comments', ''))
+            create_paragraph(truncate_text(st.session_state.get('upper_flex_result', ''), 10)),
+            create_paragraph(truncate_text(st.session_state.get('upper_flex_comments', ''), 30))
         ],
         [
             create_paragraph(get_pdf_text("shoe_flex", pdf_lang)),
             create_paragraph(get_pdf_text("shoe_flex_std", pdf_lang)),
-            create_paragraph(st.session_state.get('shoe_flex_result', '')),
-            create_paragraph(st.session_state.get('shoe_flex_comments', ''))
+            create_paragraph(truncate_text(st.session_state.get('shoe_flex_result', ''), 10)),
+            create_paragraph(truncate_text(st.session_state.get('shoe_flex_comments', ''), 30))
         ],
         [
             create_paragraph(get_pdf_text("foxing", pdf_lang)),
             create_paragraph(get_pdf_text("foxing_std", pdf_lang)),
-            create_paragraph(st.session_state.get('foxing_result', '')),
-            create_paragraph(st.session_state.get('foxing_comments', ''))
+            create_paragraph(truncate_text(st.session_state.get('foxing_result', ''), 10)),
+            create_paragraph(truncate_text(st.session_state.get('foxing_comments', ''), 30))
         ]
     ]
     
-    flexing_table = Table(flexing_data, colWidths=[2.0*inch, 2.0*inch, 1.5*inch, 2.5*inch])
+    flexing_table = Table(flexing_data, colWidths=[1.8*inch, 2.0*inch, 1.2*inch, 2.2*inch])
     flexing_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -1181,18 +1232,18 @@ def generate_pdf():
         [
             create_paragraph(get_pdf_text("top_lift_abrasion", pdf_lang)),
             create_paragraph(""),
-            create_paragraph(st.session_state.get('top_lift_abrasion_result', '')),
-            create_paragraph(st.session_state.get('top_lift_abrasion_comments', ''))
+            create_paragraph(truncate_text(st.session_state.get('top_lift_abrasion_result', ''), 10)),
+            create_paragraph(truncate_text(st.session_state.get('top_lift_abrasion_comments', ''), 30))
         ],
         [
             create_paragraph(get_pdf_text("outsole_abrasion", pdf_lang)),
-            create_paragraph(get_pdf_text("outsole_abrasion_std", pdf_lang)),
-            create_paragraph(st.session_state.get('outsole_abrasion_result', '')),
-            create_paragraph(st.session_state.get('outsole_abrasion_comments', ''))
+            create_paragraph(get_pdf_text("outsole_abrasion_std", pdf_lang), small=True),
+            create_paragraph(truncate_text(st.session_state.get('outsole_abrasion_result', ''), 10)),
+            create_paragraph(truncate_text(st.session_state.get('outsole_abrasion_comments', ''), 30))
         ]
     ]
     
-    abrasion_table = Table(abrasion_data, colWidths=[2.0*inch, 3.0*inch, 1.5*inch, 2.5*inch])
+    abrasion_table = Table(abrasion_data, colWidths=[1.8*inch, 3.0*inch, 1.2*inch, 2.2*inch])
     abrasion_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -1220,18 +1271,18 @@ def generate_pdf():
         [
             create_paragraph(get_pdf_text("outsole_resistance", pdf_lang)),
             create_paragraph(""),
-            create_paragraph(st.session_state.get('outsole_resistance_result', '')),
-            create_paragraph(st.session_state.get('outsole_resistance_comments', ''))
+            create_paragraph(truncate_text(st.session_state.get('outsole_resistance_result', ''), 10)),
+            create_paragraph(truncate_text(st.session_state.get('outsole_resistance_comments', ''), 30))
         ],
         [
             create_paragraph(get_pdf_text("heel_fatigue", pdf_lang)),
-            create_paragraph(get_pdf_text("heel_fatigue_std", pdf_lang)),
-            create_paragraph(st.session_state.get('heel_fatigue_result', '')),
-            create_paragraph(st.session_state.get('heel_fatigue_comments', ''))
+            create_paragraph(get_pdf_text("heel_fatigue_std", pdf_lang), small=True),
+            create_paragraph(truncate_text(st.session_state.get('heel_fatigue_result', ''), 10)),
+            create_paragraph(truncate_text(st.session_state.get('heel_fatigue_comments', ''), 30))
         ]
     ]
     
-    resistance_table = Table(resistance_data, colWidths=[2.0*inch, 3.0*inch, 1.5*inch, 2.5*inch])
+    resistance_table = Table(resistance_data, colWidths=[1.8*inch, 3.0*inch, 1.2*inch, 2.2*inch])
     resistance_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -1259,18 +1310,18 @@ def generate_pdf():
         [
             create_paragraph(get_pdf_text("eva_hardness", pdf_lang)),
             create_paragraph(""),
-            create_paragraph(st.session_state.get('eva_hardness_result', '')),
-            create_paragraph(st.session_state.get('eva_hardness_comments', ''))
+            create_paragraph(truncate_text(st.session_state.get('eva_hardness_result', ''), 10)),
+            create_paragraph(truncate_text(st.session_state.get('eva_hardness_comments', ''), 30))
         ],
         [
             create_paragraph(get_pdf_text("outsole_hardness", pdf_lang)),
             create_paragraph(""),
-            create_paragraph(st.session_state.get('outsole_hardness_result', '')),
-            create_paragraph(st.session_state.get('outsole_hardness_comments', ''))
+            create_paragraph(truncate_text(st.session_state.get('outsole_hardness_result', ''), 10)),
+            create_paragraph(truncate_text(st.session_state.get('outsole_hardness_comments', ''), 30))
         ]
     ]
     
-    hardness_table = Table(hardness_data, colWidths=[2.0*inch, 3.0*inch, 1.5*inch, 2.5*inch])
+    hardness_table = Table(hardness_data, colWidths=[1.8*inch, 3.0*inch, 1.2*inch, 2.2*inch])
     hardness_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -1289,9 +1340,9 @@ def generate_pdf():
     elements.append(Spacer(1, 10))
     
     # Get conclusion values
-    pass_result = st.session_state.get('pass_result', '')
-    fail_result = st.session_state.get('fail_result', '')
-    accept_result = st.session_state.get('accept_result', '')
+    pass_result = truncate_text(st.session_state.get('pass_result', ''), 50)
+    fail_result = truncate_text(st.session_state.get('fail_result', ''), 50)
+    accept_result = truncate_text(st.session_state.get('accept_result', ''), 50)
     
     conclusion_data = [
         [
@@ -1304,7 +1355,7 @@ def generate_pdf():
         ]
     ]
     
-    conclusion_table = Table(conclusion_data, colWidths=[1.0*inch, 2.0*inch, 1.0*inch, 2.0*inch, 1.0*inch, 2.0*inch])
+    conclusion_table = Table(conclusion_data, colWidths=[1.0*inch, 1.8*inch, 1.0*inch, 1.8*inch, 1.0*inch, 1.8*inch])
     conclusion_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (0, -1), bold_font),
@@ -1320,8 +1371,8 @@ def generate_pdf():
     elements.append(Spacer(1, 20))
     
     # Get signature values
-    verified_by = st.session_state.get('verified_by', '')
-    testing_person = st.session_state.get('testing_person', '')
+    verified_by = truncate_text(st.session_state.get('verified_by', ''), 20)
+    testing_person = truncate_text(st.session_state.get('testing_person', ''), 20)
     
     signature_data = [
         [
