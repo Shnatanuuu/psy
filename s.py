@@ -48,8 +48,8 @@ CHINESE_CITIES = {
     "Zhuhai": "珠海",
     "Jiangmen": "江门",
     "Zhaoqing": "肇庆",
-    "Shanghai": "上海",
-    "Beijing": "北京",
+    "Shanghai": "Shanghai",
+    "Beijing": "Beijing",
     "Suzhou": "苏州",
     "Hangzhou": "杭州",
     "Ningbo": "宁波",
@@ -539,6 +539,20 @@ def get_pdf_text(key, pdf_lang):
     else:
         return CHINESE_TEXTS.get(key, key)
 
+def get_location_display(selected_city, pdf_lang):
+    """Get location display text based on language"""
+    if pdf_lang == "en":
+        # For English PDF, show only English city name
+        return f"{selected_city}"
+    else:
+        # For Chinese PDF, show Chinese city name
+        chinese_name = CHINESE_CITIES[selected_city]
+        # Check if the Chinese name contains Chinese characters
+        if any('\u4e00' <= char <= '\u9fff' for char in chinese_name):
+            return f"{selected_city} ({chinese_name})"
+        else:
+            return f"{selected_city}"
+
 # Helper function to get translated text for UI with caching
 def get_text(key, fallback=None):
     """Get translated text based on current UI language"""
@@ -713,10 +727,12 @@ class PDFWithHeaderFooter(SimpleDocTemplate):
         china_tz = pytz.timezone('Asia/Shanghai')
         current_time = datetime.now(china_tz)
         
+        # Get location display based on language
+        location_display = get_location_display(self.selected_city, self.pdf_language)
         if self.pdf_language == "zh":
-            location_info = f"{get_pdf_text('test_location', 'zh')} {self.selected_city} ({self.chinese_city})"
+            location_info = f"{get_pdf_text('test_location', 'zh')} {location_display}"
         else:
-            location_info = f"{get_pdf_text('test_location', 'en')} {self.selected_city}"
+            location_info = f"{get_pdf_text('test_location', 'en')} {location_display}"
         
         self.canv.drawString(0.5*inch, 0.25*inch, location_info)
         
@@ -917,7 +933,9 @@ def generate_pdf():
     china_tz = pytz.timezone('Asia/Shanghai')
     current_time = datetime.now(china_tz)
     
-    location_text = f"{get_pdf_text('test_location', pdf_lang)} {selected_city} ({chinese_city})"
+    # Get location display based on language
+    location_display = get_location_display(selected_city, pdf_lang)
+    location_text = f"{get_pdf_text('test_location', pdf_lang)} {location_display}"
     date_text = f"{get_pdf_text('report_date', pdf_lang)} {current_time.strftime('%Y-%m-%d')}"
     
     elements.append(Paragraph(location_text, subtitle_style))
@@ -1334,41 +1352,43 @@ def generate_pdf():
     ]))
     elements.append(hardness_table)
     
-    # 8. Conclusion
-    elements.append(Spacer(1, 20))
+    # 8. Conclusion - FIXED TO FIT WITHIN PAGE
+    elements.append(Spacer(1, 15))  # Reduced spacing
     elements.append(Paragraph(get_pdf_text("conclusion", pdf_lang), heading_style))
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 5))
     
     # Get conclusion values
-    pass_result = truncate_text(st.session_state.get('pass_result', ''), 50)
-    fail_result = truncate_text(st.session_state.get('fail_result', ''), 50)
-    accept_result = truncate_text(st.session_state.get('accept_result', ''), 50)
+    pass_result = truncate_text(st.session_state.get('pass_result', ''), 35)  # Reduced from 50
+    fail_result = truncate_text(st.session_state.get('fail_result', ''), 35)  # Reduced from 50
+    accept_result = truncate_text(st.session_state.get('accept_result', ''), 35)  # Reduced from 50
     
     conclusion_data = [
         [
             create_paragraph(get_pdf_text("pass_label", pdf_lang), bold=True),
-            create_paragraph(pass_result),
+            create_paragraph(pass_result, small=True),  # Use small font
             create_paragraph(get_pdf_text("fail_label", pdf_lang), bold=True),
-            create_paragraph(fail_result),
+            create_paragraph(fail_result, small=True),  # Use small font
             create_paragraph(get_pdf_text("accept_label", pdf_lang), bold=True),
-            create_paragraph(accept_result)
+            create_paragraph(accept_result, small=True)  # Use small font
         ]
     ]
     
-    conclusion_table = Table(conclusion_data, colWidths=[1.0*inch, 1.8*inch, 1.0*inch, 1.8*inch, 1.0*inch, 1.8*inch])
+    # Adjusted column widths to fit within page
+    conclusion_table = Table(conclusion_data, colWidths=[0.8*inch, 1.6*inch, 0.8*inch, 1.6*inch, 0.8*inch, 1.6*inch])
     conclusion_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (0, -1), bold_font),
         ('FONTNAME', (2, 0), (2, -1), bold_font),
         ('FONTNAME', (4, 0), (4, -1), bold_font),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),  # Reduced font size
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white])
     ]))
     elements.append(conclusion_table)
     
-    # Signatures
-    elements.append(Spacer(1, 20))
+    # Signatures - Moved to new page if needed
+    elements.append(Spacer(1, 10))
     
     # Get signature values
     verified_by = truncate_text(st.session_state.get('verified_by', ''), 20)
@@ -1398,7 +1418,7 @@ def generate_pdf():
         ]
     ]
     
-    signature_table = Table(signature_data, colWidths=[1.5*inch, 2.5*inch, 0.5*inch, 1.5*inch, 2.5*inch])
+    signature_table = Table(signature_data, colWidths=[1.2*inch, 2.3*inch, 0.5*inch, 1.2*inch, 2.3*inch])
     signature_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (0, -1), bold_font),
