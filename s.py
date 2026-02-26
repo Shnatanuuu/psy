@@ -125,18 +125,9 @@ ICONS = {
 # Custom CSS with enhanced styling - Green theme for testing
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 3.5rem;
-        font-weight: 800;
-        text-align: center;
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 1.5rem;
-        padding: 0.5rem;
-        text-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
+    .main-header{font-size:2.6rem;font-weight:800;text-align:center;
+  color: #4299E1;
+  margin-bottom:1.5rem;padding:0.5rem;}
     .section-header {
         font-size: 1.9rem;
         font-weight: 700;
