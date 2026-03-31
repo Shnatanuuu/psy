@@ -387,13 +387,6 @@ def draw_text_block(c, y, label, text, pdf_lang, accent_color=None):
 
 
 def draw_generic_table(c, y, rows, col_widths, pdf_lang, header=True):
-    """
-    Generic striped table.
-    rows[0] = header row (list of strings) if header=True
-    rows[1:] = data rows
-    col_widths = list of floats (fractions of CONTENT_W), must sum to 1.0
-    Returns new y.
-    """
     HDR_H = 22; ROW_PAD = 6; FS = 8; LH = 13
     abs_widths = [CONTENT_W * f for f in col_widths]
     col_inner  = [cw - 10 for cw in abs_widths]
@@ -413,7 +406,6 @@ def draw_generic_table(c, y, rows, col_widths, pdf_lang, header=True):
 
     table_top = y
     for ri, row in enumerate(rows[start_row:]):
-        # Wrap each cell
         wrapped = [_wrap_text(str(cell), col_inner[ci], FS) for ci, cell in enumerate(row)]
         max_lines = max(len(w) for w in wrapped)
         row_h = max_lines * LH + ROW_PAD * 2
@@ -433,7 +425,6 @@ def draw_generic_table(c, y, rows, col_widths, pdf_lang, header=True):
         cx = MARGIN_L
         for ci, (wlines, cw) in enumerate(zip(wrapped, abs_widths)):
             ty = y - ROW_PAD - LH + 3
-            # First col bold accent, rest normal
             if ci == 0:
                 c.setFillColor(C_ACCENT2); c.setFont(fn_b, FS)
             else:
@@ -445,14 +436,12 @@ def draw_generic_table(c, y, rows, col_widths, pdf_lang, header=True):
             cx += cw
         y -= row_h
 
-    # Outer border
     c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
     c.rect(MARGIN_L, y, CONTENT_W, table_top - y, fill=0, stroke=1)
     return y - 6
 
 
 def draw_result_badge(c, x, y, result, pdf_lang):
-    """Draw a colored PASS/FAIL/ACCEPT badge centred at x,y."""
     r = str(result).strip().upper()
     if r in ("PASS", "通过"):
         bg, fg = C_GREEN, C_WHITE
@@ -491,7 +480,6 @@ def generate_pdf():
             return d.strftime('%Y年%m月%d日') if pdf_lang == "zh" else d.strftime('%Y-%m-%d')
         except: return str(d)
 
-    # ── Helpers for result display in table ──────────────────────────────
     def res(key):
         v = gs(key)
         if not v: return '—'
@@ -537,7 +525,6 @@ def generate_pdf():
         c.setFont(fn_r, 11)
         c.setFillColor(colors.HexColor('#aab8ff'))
         c.drawString(MARGIN_L + 24, y - 60, pt("report_title", pdf_lang))
-        # Pill badges
         pill_items = [
             ("日期" if pdf_lang == "zh" else "Date",     fmt_date(gs('test_date') and st.session_state.get('test_date') or now.date())),
             ("地点" if pdf_lang == "zh" else "Location", f"{city} {city_zh}" if pdf_lang == "zh" else city),
@@ -576,28 +563,46 @@ def generate_pdf():
         y -= 10
 
         # ── 2. ADHESIVE / PULL TEST ──────────────────────────────────────
-        y = check_space(y, 180)
+        y = check_space(y, 200)
         y = draw_section_header(c, y, pt("adhesive_test", pdf_lang), pdf_lang)
 
-        adh_hdr = [
-            pt("flat_shoe", pdf_lang), pt("standard", pdf_lang), pt("result", pdf_lang),
-            pt("high_heel", pdf_lang), pt("sole_wedge", pdf_lang), pt("standard", pdf_lang), pt("remark", pdf_lang)
+        # --- Flat Shoe sub-header ---
+        c.setFillColor(C_ACCENT2)
+        c.roundRect(MARGIN_L, y - 18, CONTENT_W, 18, 3, fill=1, stroke=0)
+        c.setFillColor(C_WHITE); c.setFont(_font(pdf_lang, bold=True), 9)
+        c.drawString(MARGIN_L + 8, y - 18 + 5, pt("flat_shoe", pdf_lang))
+        y -= 26
+
+        flat_rows = [
+            [pt("item", pdf_lang), pt("standard", pdf_lang), pt("result", pdf_lang), pt("remark", pdf_lang)],
+            [pt("toe",      pdf_lang), "12 kg/3N", res('flat_shoe_toe_result'),      com('flat_shoe_toe_remark')],
+            [pt("forepart", pdf_lang), "12 kg/3N", res('flat_shoe_forepart_result'), com('flat_shoe_forepart_remark')],
+            [pt("waist",    pdf_lang), "12 kg/3N", res('flat_shoe_waist_result'),    com('flat_shoe_waist_remark')],
+            [pt("heel",     pdf_lang), "—",        res('flat_shoe_heel_result'),     com('flat_shoe_heel_remark')],
         ]
-        adh_rows = [
-            adh_hdr,
-            [pt("toe", pdf_lang),      "12 kg/3N", res('flat_shoe_toe_result'),
-             pt("toe", pdf_lang),      "", "12 kg/3N", ""],
-            [pt("forepart", pdf_lang), "12 kg/3N", res('flat_shoe_forepart_result'),
-             pt("forepart", pdf_lang), "", "12 kg/3N", ""],
-            [pt("waist", pdf_lang),    "12 kg/3N", res('flat_shoe_waist_result'),
-             pt("waist", pdf_lang),    "", "12 kg/3N", ""],
-            [pt("heel", pdf_lang),     "", res('flat_shoe_heel_result'),
-             pt("heel", pdf_lang),
-             f"60kg/500N / 80kg/800N",
-             f"{pt('heel_height',pdf_lang)} {pt('cm_5_8',pdf_lang)}/{pt('above_8cm',pdf_lang)}", ""],
+        y = draw_generic_table(c, y, flat_rows, [0.22, 0.28, 0.20, 0.30], pdf_lang)
+        y -= 10
+
+        # --- High Heel sub-header ---
+        y = check_space(y, 160)
+        c.setFillColor(C_ACCENT2)
+        c.roundRect(MARGIN_L, y - 18, CONTENT_W, 18, 3, fill=1, stroke=0)
+        c.setFillColor(C_WHITE); c.setFont(_font(pdf_lang, bold=True), 9)
+        hh_label = pt("high_heel", pdf_lang) + " / " + pt("sole_wedge", pdf_lang)
+        c.drawString(MARGIN_L + 8, y - 18 + 5, hh_label)
+        y -= 26
+
+        hh_rows = [
+            [pt("item", pdf_lang), pt("standard", pdf_lang), pt("result", pdf_lang), pt("remark", pdf_lang)],
+            [pt("toe",      pdf_lang), "12 kg/3N", res('high_heel_toe_result'),      com('high_heel_toe_remark')],
+            [pt("forepart", pdf_lang), "12 kg/3N", res('high_heel_forepart_result'), com('high_heel_forepart_remark')],
+            [pt("waist",    pdf_lang), "12 kg/3N", res('high_heel_waist_result'),    com('high_heel_waist_remark')],
+            [pt("heel",     pdf_lang),
+             f"60kg/500N ({pt('cm_5_8', pdf_lang)}) / 80kg/800N ({pt('above_8cm', pdf_lang)})",
+             res('high_heel_heel_result'), com('high_heel_heel_remark')],
         ]
-        y = draw_generic_table(c, y, adh_rows, [0.13, 0.13, 0.10, 0.13, 0.17, 0.22, 0.12], pdf_lang)
-        y -= 6
+        y = draw_generic_table(c, y, hh_rows, [0.15, 0.35, 0.20, 0.30], pdf_lang)
+        y -= 10
 
         # ── 3. COMPONENTS PHYSICAL TEST ──────────────────────────────────
         y = check_space(y, 160)
@@ -691,14 +696,12 @@ def generate_pdf():
         y = check_space(y, 120)
         y = draw_section_header(c, y, pt("conclusion_sec", pdf_lang), pdf_lang)
 
-        # Three-column conclusion box
         col_w3 = CONTENT_W / 3
         labels = [pt("pass_label", pdf_lang), pt("fail_label", pdf_lang), pt("accept_label", pdf_lang)]
         values = [gs('pass_result'), gs('fail_result'), gs('accept_result')]
         label_colors = [C_GREEN, C_RED, C_ORANGE]
         BOX_HDR = 20; BOX_PAD = 8; FS_C = 8; LH_C = 13
 
-        # Calculate max height needed
         max_lines = 1
         for v in values:
             max_lines = max(max_lines, len(_wrap_text(v or '—', col_w3 - 16, FS_C)))
@@ -789,6 +792,8 @@ st.markdown("""
   .location-badge{display:inline-flex;align-items:center;gap:6px;
     background:linear-gradient(135deg,#1a1a2e 0%,#0f3460 100%);
     color:white;padding:.4rem .9rem;border-radius:20px;font-weight:600;font-size:.85rem;}
+  .remark-label{font-size:.78rem;font-weight:600;color:#0f3460;
+    margin-bottom:2px;margin-top:6px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -875,19 +880,51 @@ with tab1:
 with tab2:
     st.markdown(f'<div class="section-header">📏 {t("adhesive_test")}</div>', unsafe_allow_html=True)
 
-    st.markdown("### Flat Shoe")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: st.selectbox(f"Toe",      RESULT_OPTS, key="flat_shoe_toe_result")
-    with c2: st.selectbox(f"Forepart", RESULT_OPTS, key="flat_shoe_forepart_result")
-    with c3: st.selectbox(f"Waist",    RESULT_OPTS, key="flat_shoe_waist_result")
-    with c4: st.selectbox(f"Heel",     RESULT_OPTS, key="flat_shoe_heel_result")
+    # ── Flat Shoe ──────────────────────────────────────────────────────────
+    st.markdown("### 👟 Flat Shoe")
+    st.caption("Standard: 12 kg/3N for Toe, Forepart, Waist")
 
-    st.markdown("### High Heel")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: st.selectbox(f"HH Toe",      RESULT_OPTS, key="high_heel_toe_result")
-    with c2: st.selectbox(f"HH Forepart", RESULT_OPTS, key="high_heel_forepart_result")
-    with c3: st.selectbox(f"HH Waist",    RESULT_OPTS, key="high_heel_waist_result")
-    with c4: st.selectbox(f"HH Heel",     RESULT_OPTS, key="high_heel_heel_result")
+    for part_key, part_label in [("toe", "Toe"), ("forepart", "Forepart"),
+                                  ("waist", "Waist"), ("heel", "Heel")]:
+        col_res, col_rem = st.columns([1, 2])
+        with col_res:
+            st.selectbox(
+                f"Flat Shoe – {part_label}",
+                RESULT_OPTS,
+                key=f"flat_shoe_{part_key}_result"
+            )
+        with col_rem:
+            st.markdown(f'<div class="remark-label">📝 {part_label} Remark</div>', unsafe_allow_html=True)
+            st.text_input(
+                f"flat_shoe_{part_key}_remark_label",
+                placeholder=f"Remark for Flat Shoe {part_label}...",
+                key=f"flat_shoe_{part_key}_remark",
+                label_visibility="collapsed"
+            )
+
+    st.divider()
+
+    # ── High Heel ──────────────────────────────────────────────────────────
+    st.markdown("### 👠 High Heel / Sole / Wedge")
+    st.caption("Standard: Heel 5CM–8CM: 60kg/500N | Above 8CM: 80kg/800N")
+
+    for part_key, part_label in [("toe", "Toe"), ("forepart", "Forepart"),
+                                  ("waist", "Waist"), ("heel", "Heel")]:
+        col_res, col_rem = st.columns([1, 2])
+        with col_res:
+            st.selectbox(
+                f"High Heel – {part_label}",
+                RESULT_OPTS,
+                key=f"high_heel_{part_key}_result"
+            )
+        with col_rem:
+            st.markdown(f'<div class="remark-label">📝 {part_label} Remark</div>', unsafe_allow_html=True)
+            st.text_input(
+                f"high_heel_{part_key}_remark_label",
+                placeholder=f"Remark for High Heel {part_label}...",
+                key=f"high_heel_{part_key}_remark",
+                label_visibility="collapsed"
+            )
 
 # ══════════════════════════════════════════════════════════════════════════
 with tab3:
