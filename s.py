@@ -559,8 +559,23 @@ def generate_pdf():
         ]
         y = draw_two_col_kv(c, y, pairs, pdf_lang)
         y -= 6
-        y = draw_text_block(c, y, pt("standard_note", pdf_lang), pt("standard_note", pdf_lang), pdf_lang, C_ACCENT)
-        y -= 10
+        # Slim inline note — no styled block, avoids pushing to a new page
+        note_text = pt("standard_note", pdf_lang)
+        note_lines = _wrap_text(note_text, CONTENT_W - 16, 7)
+        note_h = len(note_lines) * 11 + 8
+        c.setFillColor(colors.HexColor('#fff8e1'))
+        c.rect(MARGIN_L, y - note_h, CONTENT_W, note_h, fill=1, stroke=0)
+        c.setStrokeColor(C_ORANGE); c.setLineWidth(0.5)
+        c.rect(MARGIN_L, y - note_h, CONTENT_W, note_h, fill=0, stroke=1)
+        c.setFillColor(C_ORANGE); c.setLineWidth(3)
+        c.line(MARGIN_L, y - note_h, MARGIN_L, y)
+        ty = y - 7
+        c.setFillColor(C_GREY_TEXT); c.setFont(_font(pdf_lang), 7)
+        for ln in note_lines:
+            if ln:
+                c.drawString(MARGIN_L + 8, ty, ln)
+            ty -= 11
+        y -= note_h + 8
 
         # ── 2. ADHESIVE / PULL TEST ──────────────────────────────────────
         y = check_space(y, 200)
@@ -749,16 +764,10 @@ def generate_pdf():
             c.drawCentredString(bx + col_w2 / 2, y - 56, pt("signature", pdf_lang))
         y -= 80
 
-        # Version & disclaimer
-        y = check_space(y, 40)
+        # Version label only
+        y = check_space(y, 20)
         c.setFillColor(C_GREY_TEXT); c.setFont(fn_r, 7.5)
         c.drawRightString(MARGIN_L + CONTENT_W, y, pt("version", pdf_lang))
-        y -= 12
-        disc = pt("standard_note", pdf_lang)
-        disc_lines = _wrap_text(disc, CONTENT_W - 20, 7.5)
-        for ln in disc_lines:
-            if ln: c.drawString(MARGIN_L, y, ln)
-            y -= 11
 
         c.save()
         return page_counter[0]
